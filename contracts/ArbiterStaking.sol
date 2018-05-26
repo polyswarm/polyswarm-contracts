@@ -1,0 +1,166 @@
+pragma solidity ^0.4.21;
+
+import "zeppelin-solidity/contracts/math/SafeMath.sol";
+import "zeppelin-solidity/contracts/lifecycle/Pausable.sol";
+import "zeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
+import "./NectarToken.sol";
+
+contract ArbiterStaking is Pausable {
+    using SafeMath for uint256;
+    using SafeERC20 for NectarToken;
+
+    // ~4 months in blocks
+    //uint256 public constant STAKE_DURATION = 701333;
+    uint256 public constant MINIMUM_STAKE = 10000000 * 10 ** 18;
+
+    struct Deposit {
+        uint256 blockNumber;
+        uint256 value;
+    }
+
+    event NewDeposit(
+        address indexed from,
+        uint256 value
+    );
+
+    event NewWithdrawal(
+        address indexed to,
+        uint256 value
+    );
+
+    mapping(address => Deposit[]) deposits;
+
+    uint256 internal stakeDuration;
+    NectarToken internal token;
+
+    /**
+     * Construct a new ArbiterStaking
+     *
+     * @param _token address of NCT token to use
+     */
+    constructor(address _token, uint256 _stakeDuration) Ownable() public {
+        token = NectarToken(_token);
+        stakeDuration = _stakeDuration;
+    }
+
+    /**
+     * Handle a deposit upon receiving approval for a token transfer
+     * Called from NectarToken.approveAndCall
+     *
+     * @param _from Account depositing NCT
+     * @param _value Amount of NCT being deposited
+     * @param _tokenContract Address of the NCT contract
+     * @return true if successful else false
+     */
+    function receiveApproval(
+        address _from,
+        uint256 _value,
+        address _tokenContract,
+        bytes
+    )
+        public
+        whenNotPaused
+        returns (bool)
+    {
+        // Ensure we are depositing something
+        require(_value > 0);
+        // Ensure we're being called from he right token contract
+        require(_tokenContract == address(token));
+
+        token.safeTransferFrom(_from, this, _value);
+        deposits[_from].push(Deposit(block.number, _value));
+        emit NewDeposit(_from, _value);
+
+        return true;
+    }
+
+    /**
+     * Deposit NCT (requires prior approval)
+     *
+     * @param value The amount of NCT to deposit
+     */
+    function deposit(uint256 value) public whenNotPaused {
+        require(receiveApproval(msg.sender, value, token, new bytes(0)));
+    }
+
+    /**
+     * Retrieve the (total) current balance of staked NCT for an account
+     *
+     * @param addr The account whos balance to retrieve
+     * @return The current (total) balance of the account
+     */
+    function balanceOf(address addr) public view returns (uint256) {
+        uint256 ret = 0;
+        Deposit[] storage ds = deposits[addr];
+        for (uint256 i = 0; i < ds.length; i++) {
+            ret = ret.add(ds[i].value);
+        }
+        return ret;
+    }
+
+    /**
+     * Retrieve the withdrawable current balance of staked NCT for an account
+     *
+     * @param addr The account whos balance to retrieve
+     * @return The current withdrawable balance of the account
+     */
+    function withdrawableBalanceOf(address addr) public view returns (uint256) {
+        uint256 ret = 0;
+        uint256 latest_block = block.number.sub(stakeDuration);
+        Deposit[] storage ds = deposits[addr];
+        for (uint256 i = 0; i < ds.length; i++) {
+            if (ds[i].blockNumber <= latest_block) {
+                ret = ret.add(ds[i].value);
+            } else {
+                break;
+            }
+        }
+        return ret;
+    }
+
+    /**
+     * Withdraw staked NCT
+     *
+     * @param value The amount of NCT to withdraw
+     */
+    function withdraw(uint256 value) public whenNotPaused {
+        uint256 remaining = value;
+        uint256 latest_block = block.number.sub(stakeDuration);
+        Deposit[] storage ds = deposits[msg.sender];
+
+        // Determine which deposits we will modifiy
+        for (uint256 end = 0; end < ds.length; end++) {
+            if (ds[end].blockNumber <= latest_block) {
+                if (ds[end].value >= remaining) {
+                    ds[end].value = ds[end].value.sub(remaining);
+                    if (ds[end].value == 0) {
+                        end++;
+                    }
+                    remaining = 0;
+                    break;
+                } else {
+                    remaining = remaining.sub(ds[end].value);
+                }
+            } else {
+                break;
+            }
+        }
+
+        // If we haven't hit our value by now, we don't have enough available
+        // funds
+        require(remaining == 0);
+
+        // Delete the obsolete deposits
+        for (uint256 i = 0; i < ds.length.sub(end); i++) {
+            ds[i] = ds[i.add(end)];
+        }
+        for (i = ds.length.sub(end); i < ds.length; i++) {
+            delete ds[i];
+        }
+        ds.length -= end;
+
+        // Do the transfer
+        token.safeTransfer(msg.sender, value);
+        emit NewWithdrawal(msg.sender, value);
+    }
+}
