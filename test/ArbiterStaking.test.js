@@ -28,7 +28,7 @@ contract('ArbiterStaking', function ([owner, arbiter]) {
     this.token = await NectarToken.new();
 
     await [arbiter].forEach(async account => {
-      await this.token.mint(account, ether(1000));
+      await this.token.mint(account, ether(1000000000));
     });
 
     await this.token.enableTransfers();
@@ -49,7 +49,7 @@ contract('ArbiterStaking', function ([owner, arbiter]) {
       await this.token.approve(this.staking.address, '1', {from: arbiter }).should.be.fulfilled;
       let tx = await this.staking.deposit('1', { from: arbiter }).should.be.fulfilled;
       tx.logs[0].args.from.should.be.bignumber.equal(arbiter);
-      tx.logs[0].args.value.should.be.bignumber.equal(1);
+      tx.logs[0].args.value.should.be.bignumber.equal('1');
     });
   });
 
@@ -58,14 +58,14 @@ contract('ArbiterStaking', function ([owner, arbiter]) {
       await this.token.approve(this.staking.address, '1', {from: arbiter }).should.be.fulfilled;
       let tx = await this.staking.deposit('1', { from: arbiter }).should.be.fulfilled;
       tx.logs[0].args.from.should.be.bignumber.equal(arbiter);
-      tx.logs[0].args.value.should.be.bignumber.equal(1);
+      tx.logs[0].args.value.should.be.bignumber.equal('1');
     });
 
     it('update the balance after a deposit', async function() {
       await this.token.approve(this.staking.address, '1', {from: arbiter }).should.be.fulfilled;
       let tx = await this.staking.deposit('1', { from: arbiter }).should.be.fulfilled;
       tx.logs[0].args.from.should.be.bignumber.equal(arbiter);
-      tx.logs[0].args.value.should.be.bignumber.equal(1);
+      tx.logs[0].args.value.should.be.bignumber.equal('1');
 
       const balance = await this.staking.balanceOf(arbiter);
       balance.should.be.bignumber.equal('1');
@@ -75,14 +75,14 @@ contract('ArbiterStaking', function ([owner, arbiter]) {
       await this.token.approve(this.staking.address, '1', {from: arbiter }).should.be.fulfilled;
       let tx = await this.staking.deposit('1', { from: arbiter }).should.be.fulfilled;
       tx.logs[0].args.from.should.be.bignumber.equal(arbiter);
-      tx.logs[0].args.value.should.be.bignumber.equal(1);
+      tx.logs[0].args.value.should.be.bignumber.equal('1');
 
       await advanceBlocks(10);
 
       await this.token.approve(this.staking.address, '1', {from: arbiter }).should.be.fulfilled;
       tx = await this.staking.deposit('1', { from: arbiter }).should.be.fulfilled;
       tx.logs[0].args.from.should.be.bignumber.equal(arbiter);
-      tx.logs[0].args.value.should.be.bignumber.equal(1);
+      tx.logs[0].args.value.should.be.bignumber.equal('1');
 
       let b = await this.staking.balanceOf(arbiter);
       b.should.be.bignumber.equal('2');
@@ -98,6 +98,16 @@ contract('ArbiterStaking', function ([owner, arbiter]) {
       wb = await this.staking.withdrawableBalanceOf(arbiter);
       wb.should.be.bignumber.equal('2');
     });
+
+    it('update the withdrawable balance after a deposit', async function() {
+      await this.token.approve(this.staking.address, '1', { from: arbiter }).should.be.fulfilled;
+      await this.staking.deposit('1', { from: arbiter }).should.be.fulfilled;
+      let b = await this.staking.balanceOf(arbiter);
+      b.should.be.bignumber.equal('1');
+
+      await this.token.approve(this.staking.address, ether('100000000'), { from: arbiter }).should.be.fulfilled;
+      await this.staking.deposit(ether('100000000'), { from: arbiter }).should.be.rejectedWith(EVMRevert);
+    });
   });
 
   describe('withdrawals', function() {
@@ -105,7 +115,7 @@ contract('ArbiterStaking', function ([owner, arbiter]) {
       await this.token.approve(this.staking.address, '1', {from: arbiter }).should.be.fulfilled;
       let tx = await this.staking.deposit('1', { from: arbiter }).should.be.fulfilled;
       tx.logs[0].args.from.should.be.bignumber.equal(arbiter);
-      tx.logs[0].args.value.should.be.bignumber.equal(1);
+      tx.logs[0].args.value.should.be.bignumber.equal('1');
 
       let b = await this.staking.balanceOf(arbiter);
       b.should.be.bignumber.equal('1');
@@ -123,12 +133,90 @@ contract('ArbiterStaking', function ([owner, arbiter]) {
 
       tx = await this.staking.withdraw('1', { from: arbiter }).should.be.fulfilled;
       tx.logs[0].args.to.should.be.bignumber.equal(arbiter);
-      tx.logs[0].args.value.should.be.bignumber.equal(1);
+      tx.logs[0].args.value.should.be.bignumber.equal('1');
 
       b = await this.staking.balanceOf(arbiter);
       b.should.be.bignumber.equal('0');
       wb = await this.staking.withdrawableBalanceOf(arbiter);
       wb.should.be.bignumber.equal('0');
+    });
+
+    it('should handle combinations of deposits and withdrawals', async function() {
+      let self = this;
+
+      let deposit = async function(amount) {
+        await self.token.approve(self.staking.address, amount, {from: arbiter }).should.be.fulfilled;
+        return self.staking.deposit(amount, { from: arbiter });
+      };
+
+      let withdraw = async function(amount) {
+        return self.staking.withdraw(amount, { from: arbiter });
+      };
+
+      let b = await this.staking.balanceOf(arbiter);
+      b.should.be.bignumber.equal('0');
+      let wb = await this.staking.withdrawableBalanceOf(arbiter);
+      wb.should.be.bignumber.equal('0');
+
+      await deposit(10).should.be.fulfilled;
+      await advanceBlocks(8);
+      await deposit(20).should.be.fulfilled;
+      await advanceBlocks(8);
+      await deposit(30).should.be.fulfilled;
+      await advanceBlocks(8);
+      await deposit(40).should.be.fulfilled;
+      await advanceBlocks(8);
+
+      b = await this.staking.balanceOf(arbiter);
+      b.should.be.bignumber.equal('100');
+      wb = await this.staking.withdrawableBalanceOf(arbiter);
+      wb.should.be.bignumber.equal('0');
+
+      await advanceBlocks(STAKE_DURATION - 40 + 1);
+
+      b = await this.staking.balanceOf(arbiter);
+      b.should.be.bignumber.equal('100');
+      wb = await this.staking.withdrawableBalanceOf(arbiter);
+      wb.should.be.bignumber.equal('10');
+ 
+      await withdraw('20').should.be.rejectedWith(EVMRevert);
+      await withdraw('5').should.be.fulfilled;
+      await withdraw('10').should.be.rejectedWith(EVMRevert);
+      await withdraw('3').should.be.fulfilled;
+      
+      await advanceBlocks(10);
+
+      await withdraw('25').should.be.rejectedWith(EVMRevert);
+      await withdraw('22').should.be.fulfilled;
+ 
+      await advanceBlocks(10);
+
+      await withdraw('30').should.be.fulfilled;
+
+      await advanceBlocks(10);
+
+      await withdraw('15').should.be.fulfilled;
+
+      b = await this.staking.balanceOf(arbiter);
+      b.should.be.bignumber.equal('25');
+      wb = await this.staking.withdrawableBalanceOf(arbiter);
+      wb.should.be.bignumber.equal('25');
+    });
+  });
+
+  describe('arbiter', function() {
+    it('should correctly detect elligible arbiters', async function() {
+      let is_arbiter = await this.staking.isElligible(arbiter);
+      is_arbiter.should.be.equal(false);
+
+      let value = ether('10000000');
+      await this.token.approve(this.staking.address, value, {from: arbiter }).should.be.fulfilled;
+      let tx = await this.staking.deposit(value, { from: arbiter }).should.be.fulfilled;
+      tx.logs[0].args.from.should.be.bignumber.equal(arbiter);
+      tx.logs[0].args.value.should.be.bignumber.equal(value);
+
+      is_arbiter = await this.staking.isElligible(arbiter);
+      is_arbiter.should.be.equal(true);
     });
   });
 });

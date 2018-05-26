@@ -12,6 +12,9 @@ contract ArbiterStaking is Pausable {
     // ~4 months in blocks
     //uint256 public constant STAKE_DURATION = 701333;
     uint256 public constant MINIMUM_STAKE = 10000000 * 10 ** 18;
+    uint256 public constant MAXIMUM_STAKE = 100000000 * 10 ** 18;
+    uint8 public constant VOTE_RATIO_NUMERATOR = 9;
+    uint8 public constant VOTE_RATIO_DENOMINATOR = 10;
 
     struct Deposit {
         uint256 blockNumber;
@@ -29,6 +32,10 @@ contract ArbiterStaking is Pausable {
     );
 
     mapping(address => Deposit[]) deposits;
+
+    mapping(uint128 => mapping(address => bool)) bounties;
+    mapping(uint128 => uint256) bountyGuidToIndex;
+    uint256[] bountyBlockNumbers;
 
     uint256 internal stakeDuration;
     NectarToken internal token;
@@ -66,6 +73,8 @@ contract ArbiterStaking is Pausable {
         require(_value > 0);
         // Ensure we're being called from he right token contract
         require(_tokenContract == address(token));
+        // Ensure that we are not staking more than the maximum
+        require(balanceOf(_from).add(_value) <= MAXIMUM_STAKE);
 
         token.safeTransferFrom(_from, this, _value);
         deposits[_from].push(Deposit(block.number, _value));
@@ -119,8 +128,7 @@ contract ArbiterStaking is Pausable {
     }
 
     /**
-     * Withdraw staked NCT
-     *
+     * Withdraw staked NCT 
      * @param value The amount of NCT to withdraw
      */
     function withdraw(uint256 value) public whenNotPaused {
@@ -162,5 +170,46 @@ contract ArbiterStaking is Pausable {
         // Do the transfer
         token.safeTransfer(msg.sender, value);
         emit NewWithdrawal(msg.sender, value);
+    }
+
+    /**
+     * Is an address an elligible arbiter?
+     * @param addr The address to validate
+     * @return true if address is elligible else false
+     */
+    function isElligible(address addr) public view returns (bool) {
+        uint256 num;
+        uint256 den;
+        (num, den) = arbiterResponseRate(addr);
+
+        return balanceOf(addr) >= MINIMUM_STAKE &&
+            (den < VOTE_RATIO_DENOMINATOR || num.mul(VOTE_RATIO_DENOMINATOR).div(VOTE_RATIO_NUMERATOR) >= 9);
+    }
+
+    /**
+     * Record a bounty that an arbiter has voted on
+     *
+     * @param arbiter The address of the arbiter
+     * @param bountyGuid The guid of the bounty
+     */
+    function recordBounty(address arbiter, uint128 bountyGuid, uint256 blockNumber) public onlyOwner {
+        require(arbiter != address(0));
+        require(blockNumber != 0);
+
+        if (bountyGuidToIndex[bountyGuid] == 0) {
+            bountyGuidToIndex[bountyGuid] = bountyBlockNumbers.push(blockNumber);
+        }
+
+        bounties[bountyGuid][arbiter] = true;
+    }
+
+    /**
+     * Determines the ratio of past verdicts that the arbiter has responded to
+     *
+     * @param arbiter The address of the arbiter
+     * @return number of bounties responded to, number of bounties considered
+     */
+    function arbiterResponseRate(address arbiter) public view returns (uint256 num, uint256 den) {
+        return (9, 10);
     }
 }
