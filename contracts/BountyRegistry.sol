@@ -160,7 +160,7 @@ contract BountyRegistry is Pausable {
         bountiesByGuid[guid].amount = amount;
         bountiesByGuid[guid].artifactURI = artifactURI;
         bountiesByGuid[guid].expirationBlock = durationBlocks.add(block.number);
-        bountiesByGuid[guid].assertionLimitBlock = ARBITER_VOTE_WINDOW.add(block.number);
+        bountiesByGuid[guid].assertionLimitBlock = ARBITER_VOTE_WINDOW.add(bountiesByGuid[guid].expirationBlock);
 
         bountyGuids.push(guid);
 
