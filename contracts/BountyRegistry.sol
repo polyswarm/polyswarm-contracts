@@ -1,4 +1,4 @@
-pragma solidity ^0.4.18;
+pragma solidity ^0.4.21;
 
 import "zeppelin-solidity/contracts/math/SafeMath.sol";
 import "zeppelin-solidity/contracts/lifecycle/Pausable.sol";
@@ -61,7 +61,6 @@ contract BountyRegistry is Pausable {
         uint256 verdicts
     );
 
-    address internal owner;
     NectarToken internal token;
 
     // 0.0625NCT (1/16)
@@ -82,11 +81,11 @@ contract BountyRegistry is Pausable {
     /**
      * Construct a new BountyRegistry
      *
-     * @param nectarTokenAddr address of NCT token to use
+     * @param _token address of NCT token to use
      */
-    function BountyRegistry(address nectarTokenAddr) public {
+    constructor(address _token) Ownable() public {
         owner = msg.sender;
-        token = NectarToken(nectarTokenAddr);
+        token = NectarToken(_token);
     }
 
     /** Function only callable by arbiter */
