@@ -40,9 +40,14 @@ contract ArbiterStaking is Pausable {
         uint256 blockNumber;
     }
 
-    mapping(uint128 => mapping(address => bool)) public bountyResponseByGuidAndAddress;
-    mapping(uint128 => uint256) public bountyGuidToIndex;
+    event NewBounty(
+        uint128 indexed guid,
+        uint256 blockNumber
+    );
+
     Bounty[] public bounties;
+    mapping(uint128 => mapping(address => bool)) public bountyResponseByGuidAndAddress;
+    mapping(uint128 => uint256) internal bountyGuidToIndex;
 
     uint256 internal stakeDuration;
     NectarToken internal token;
@@ -221,6 +226,8 @@ contract ArbiterStaking is Pausable {
 
             bounties[start] = Bounty(bountyGuid, blockNumber);
             bountyGuidToIndex[bountyGuid] = start;
+
+            emit NewBounty(bountyGuid, blockNumber);
         }
 
         bountyResponseByGuidAndAddress[bountyGuid][arbiter] = true;
