@@ -17,7 +17,7 @@ contract BountyRegistry is Pausable {
         bool resolved;
         uint256[] verdicts;
         address[] voters;
-        uint256 assertionLimitBlock;
+        uint256 votingLimitBlock;
     }
 
     struct Assertion {
@@ -160,7 +160,7 @@ contract BountyRegistry is Pausable {
         bountiesByGuid[guid].amount = amount;
         bountiesByGuid[guid].artifactURI = artifactURI;
         bountiesByGuid[guid].expirationBlock = durationBlocks.add(block.number);
-        bountiesByGuid[guid].assertionLimitBlock = ARBITER_VOTE_WINDOW.add(bountiesByGuid[guid].expirationBlock);
+        bountiesByGuid[guid].votingLimitBlock = ARBITER_VOTE_WINDOW.add(bountiesByGuid[guid].expirationBlock);
 
         bountyGuids.push(guid);
 
@@ -247,7 +247,7 @@ contract BountyRegistry is Pausable {
         // Check if the deadline has expired
         require(bounty.expirationBlock <= block.number);
         // Check if the voting window has closed
-        require(bounty.assertionLimitBlock > block.number);
+        require(bounty.votingLimitBlock > block.number);
 
         bountiesByGuid[bountyGuid].verdicts.push(verdicts);
 
@@ -276,7 +276,7 @@ contract BountyRegistry is Pausable {
         // Check if the deadline has expired
         require(bounty.expirationBlock <= block.number);
         // Check if the voting window has closed
-        require(bounty.assertionLimitBlock <= block.number);
+        require(bounty.votingLimitBlock <= block.number);
 
         bountiesByGuid[bountyGuid].resolved = true;
 
