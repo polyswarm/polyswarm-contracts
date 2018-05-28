@@ -9,8 +9,6 @@ contract ArbiterStaking is Pausable {
     using SafeMath for uint256;
     using SafeERC20 for NectarToken;
 
-    // ~4 months in blocks
-    //uint256 public constant STAKE_DURATION = 701333;
     uint256 public constant MINIMUM_STAKE = 10000000 * 10 ** 18;
     uint256 public constant MAXIMUM_STAKE = 100000000 * 10 ** 18;
     uint8 public constant VOTE_RATIO_NUMERATOR = 9;
@@ -49,7 +47,7 @@ contract ArbiterStaking is Pausable {
     mapping(uint128 => mapping(address => bool)) public bountyResponseByGuidAndAddress;
     mapping(uint128 => uint256) internal bountyGuidToIndex;
 
-    uint256 internal stakeDuration;
+    uint256 public stakeDuration;
     NectarToken internal token;
 
     /**
@@ -219,7 +217,7 @@ contract ArbiterStaking is Pausable {
                 }
             }
 
-            bounties.push(Bounty(0, 0));
+            bounties.length++;
             for (uint256 i = bounties.length.sub(1); i > start; i--) {
                 bounties[i] = bounties[i.sub(1)];
             }
@@ -240,9 +238,12 @@ contract ArbiterStaking is Pausable {
      * @return number of bounties responded to, number of bounties considered
      */
     function arbiterResponseRate(address arbiter) public view returns (uint256 num, uint256 den) {
-        for (uint256 start = bounties.length.sub(1); start > 0; start--) {
-            if (bounties[start].blockNumber < block.number.sub(stakeDuration)) {
-                break;
+        uint256 start = 0;
+        if (block.number > stakeDuration) {
+            for (start = bounties.length.sub(1); start > 0; start--) {
+                if (bounties[start].blockNumber < block.number.sub(stakeDuration)) {
+                    break;
+                }
             }
         }
 

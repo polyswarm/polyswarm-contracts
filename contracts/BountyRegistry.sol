@@ -2,6 +2,7 @@ pragma solidity ^0.4.21;
 
 import "zeppelin-solidity/contracts/math/SafeMath.sol";
 import "zeppelin-solidity/contracts/lifecycle/Pausable.sol";
+import "./ArbiterStaking.sol";
 import "./NectarToken.sol";
 
 
@@ -61,6 +62,7 @@ contract BountyRegistry is Pausable {
         uint256 verdicts
     );
 
+    ArbiterStaking public staking;
     NectarToken internal token;
 
     // 0.0625NCT (1/16)
@@ -71,6 +73,8 @@ contract BountyRegistry is Pausable {
     uint256 public constant ARBITER_LOOKBACK_RANGE = 100;
     uint256 public constant ARBITER_VOTE_WINDOW = 25; // BLOCKS
 
+    // ~4 months in blocks
+    uint256 public constant STAKE_DURATION = 701333;
 
     uint128[] public bountyGuids;
     mapping (uint128 => Bounty) public bountiesByGuid;
@@ -85,12 +89,14 @@ contract BountyRegistry is Pausable {
      */
     constructor(address _token) Ownable() public {
         owner = msg.sender;
+        staking = new ArbiterStaking(_token, STAKE_DURATION);
         token = NectarToken(_token);
     }
 
     /** Function only callable by arbiter */
     modifier onlyArbiter() {
         require(arbiters[msg.sender]);
+        require(staking.isElligible(msg.sender));
         _;
     }
 
@@ -239,7 +245,7 @@ contract BountyRegistry is Pausable {
         onlyArbiter
         whenNotPaused
     {
-        Bounty memory bounty = bountiesByGuid[bountyGuid];
+        Bounty storage bounty = bountiesByGuid[bountyGuid];
 
         // Check if this bounty has been initialized
         require(bounty.author != address(0));
@@ -248,9 +254,10 @@ contract BountyRegistry is Pausable {
         // Check if the voting window has closed
         require(bounty.votingLimitBlock > block.number);
 
-        bountiesByGuid[bountyGuid].verdicts.push(verdicts);
+        bounty.verdicts.push(verdicts);
+        bounty.voters.push(msg.sender);
 
-        bountiesByGuid[bountyGuid].voters.push(msg.sender);
+        staking.recordBounty(msg.sender, bountyGuid, block.number);
         
         emit NewVerdict(bountyGuid, verdicts);
     }
