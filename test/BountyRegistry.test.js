@@ -73,7 +73,7 @@ contract('BountyRegistry', function ([owner, user0, user1, user2, expert0, exper
     await this.bountyregistry.addArbiter(arbiter3, web3.eth.blockNumber);
   });
 
-  xdescribe('token', function() {
+  describe('token', function() {
     it('should allocate NCT to each participant', async function() {
       await [owner, user0, user1, user2, expert0, expert1].forEach(async account => {
         let balance = await this.token.balanceOf(account);
@@ -139,7 +139,7 @@ contract('BountyRegistry', function ([owner, user0, user1, user2, expert0, exper
     });
   });
 
-  xdescribe('assertion', function() {
+  describe('assertion', function() {
     it('should allow users to post assertions', async function() {
       let amount = ether(10);
       let bid = ether(20);
