@@ -73,7 +73,7 @@ contract('BountyRegistry', function ([owner, user0, user1, user2, expert0, exper
     await this.bountyregistry.addArbiter(arbiter3, web3.eth.blockNumber);
   });
 
-  describe('token', function() {
+  xdescribe('token', function() {
     it('should allocate NCT to each participant', async function() {
       await [owner, user0, user1, user2, expert0, expert1].forEach(async account => {
         let balance = await this.token.balanceOf(account);
@@ -139,7 +139,7 @@ contract('BountyRegistry', function ([owner, user0, user1, user2, expert0, exper
     });
   });
 
-  describe('assertion', function() {
+  xdescribe('assertion', function() {
     it('should allow users to post assertions', async function() {
       let amount = ether(10);
       let bid = ether(20);
@@ -200,31 +200,15 @@ contract('BountyRegistry', function ([owner, user0, user1, user2, expert0, exper
       voters.length.should.equal(4);
     });
 
-    it('should not allow arbiters to settle if in voting window', async function() {
+
+    it('should not allow arbiters to vote twice', async function() {
       let amount = ether(10);
       let bid = ether(20);
       let tx = await postBounty(this.token, this.bountyregistry, user0, amount, IpfsReadme, 10);
       let guid = tx.logs[0].args.guid;
 
-      await postAssertion(this.token, this.bountyregistry, expert0, guid, bid, 0x1, 0x0, "foo");
-      await postAssertion(this.token, this.bountyregistry, expert1, guid, bid, 0x1, 0x1, "bar");
-
-      await advanceToBlock(web3.eth.blockNumber + 10);
-
-      await voteOnBounty(this.bountyregistry, arbiter0, guid, 0x1);
-      await voteOnBounty(this.bountyregistry, arbiter1, guid, 0x1);
-      await voteOnBounty(this.bountyregistry, arbiter2, guid, 0x1);
       await voteOnBounty(this.bountyregistry, arbiter3, guid, 0x0);
-
-      let errorMessage;
-      try {
-        await settleBounty(this.bountyregistry, arbiter0, guid);
-      } catch (err) {
-        errorMessage = err.message;
-      }
-
-      assert.equal(errorMessage, 'VM Exception while processing transaction: revert', 'Did not revert the payment');
-
+      await voteOnBounty(this.bountyregistry, arbiter3, guid, 0x0).should.be.rejectedWith(EVMRevert);
     });
 
     it('should allow arbiters to settle if out voting window', async function() {
