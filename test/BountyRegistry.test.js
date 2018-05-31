@@ -276,19 +276,18 @@ contract('BountyRegistry', function ([owner, user0, user1, user2, expert0, exper
       expert0Balance.should.be.bignumber.equal(ether(100000000).sub(bid).sub(AssertionFee));
 
       let expert1Balance = await this.token.balanceOf(expert1);
-      // init + (bid / 2) + (amount / 2) - assertionFee
-      expert1Balance.should.be.bignumber.equal(ether(100000000).add(bid.div(2)).add(amount.div(2)).sub(AssertionFee));
+      // init + bid + amount - assertionFee
+      expert1Balance.should.be.bignumber.equal(ether(100000000).add(bid).add(amount).sub(AssertionFee));
 
       let arbiterBalance = await this.token.balanceOf(selected);
-      // init + (bid / 2) + (amount / 2) + (assertionFee * 2) + bountyFee
-      arbiterBalance.should.be.bignumber.equal(ether(90000000).add(bid.div(2)).add(amount.div(2)).add(AssertionFee.mul(2)).add(BountyFee));
+      // init + (assertionFee * 2) + bountyFee
+      arbiterBalance.should.be.bignumber.equal(ether(90000000).add(AssertionFee.mul(2)).add(BountyFee));
 
       let bounty = await this.bountyregistry.bountiesByGuid(guid);
-      bounty[5].should.equal(true);
-
+      bounty[6].should.equal(true);
     });
 
-    it('should return funds if less than 2/3 of abiters agree', async function() {
+    it('should return funds if less than 2/3 of arbiters agree', async function() {
       let amount = ether(10);
       let bid = ether(20);
       let tx = await postBounty(this.token, this.bountyregistry, user0, amount, IpfsReadme, 10);
@@ -316,9 +315,9 @@ contract('BountyRegistry', function ([owner, user0, user1, user2, expert0, exper
       let expert0Balance = await this.token.balanceOf(expert0);
       let expert1Balance = await this.token.balanceOf(expert1);
 
-      // init - assertionFee
-      expert0Balance.should.be.bignumber.equal(ether(100000000).sub(AssertionFee));
-      expert1Balance.should.be.bignumber.equal(ether(100000000).sub(AssertionFee));
+      // init + (amount / 2) - assertionFee
+      expert0Balance.should.be.bignumber.equal(ether(100000000).add(amount.div(2)).sub(AssertionFee));
+      expert1Balance.should.be.bignumber.equal(ether(100000000).add(amount.div(2)).sub(AssertionFee));
     });
 
     it('should only allow arbiters to settle bounties', async function() {

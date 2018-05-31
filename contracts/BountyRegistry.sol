@@ -191,7 +191,7 @@ contract BountyRegistry is Pausable {
         bountiesByGuid[guid].amount = amount;
         bountiesByGuid[guid].artifactURI = artifactURI;
         // FIXME
-        bountiesByGuid[guid].numArtifacts = 256;
+        bountiesByGuid[guid].numArtifacts = 1;
         bountiesByGuid[guid].expirationBlock = durationBlocks.add(block.number);
         bountiesByGuid[guid].bloom = bloom;
 
@@ -355,6 +355,8 @@ contract BountyRegistry is Pausable {
         );
     }
 
+    // This struct exists to move state from settleBounty into memory from stack
+    // to avoid solidity limitations
     struct ArtifactPot {
         uint256 numWinners;
         uint256 numLosers;
@@ -379,78 +381,84 @@ contract BountyRegistry is Pausable {
 
         bountiesByGuid[bountyGuid].resolved = true;
 
-        if (assertions.length == 0) {
-            // process refund
-            return;
-        }
-
-        if (bounty.verdicts.length == 0) {
-            // process refund
-            return;
-        }
+        uint256 i = 0;
+        uint256 j = 0;
 
         // These are scaled up by bounty.numArtifacts in the loop below, and are
         // scaled back down before initiating token transfers
         uint256[] memory expertRewards = new uint256[](assertions.length);
         uint256 bountyRefund = 0;
 
-        uint256 i = 0;
-        uint256 j = 0;
-
-        for (i = 0; i < bounty.numArtifacts; i++) {
-            uint256 vote = 0;
-            for (j = 0; j < bounty.verdicts.length; j++) {
-                if (bounty.verdicts[j] & (1 << i) != 0) {
-                    vote = vote.add(1);
-                }
+        if (assertions.length == 0) {
+            // Refund the bounty amount and fees to ambassador
+            bountyRefund = bounty.amount.add(BOUNTY_FEE).mul(bounty.numArtifacts);
+        } else if (bounty.verdicts.length == 0) {
+            // Refund bids and distribute the bounty amount evenly to experts
+            for (j = 0; j < assertions.length; j++) {
+                expertRewards[j] = expertRewards[j].add(assertions[j].bid);
+                expertRewards[j] = expertRewards[j].add(bounty.amount.div(assertions.length));
             }
-            // Three cases: 0: 0 <= T < 1/3, 1: 1/3 <= T < 2/3, 2: 2/3 <= T <= 1
-            vote = vote.mul(3).div(bounty.verdicts.length);
-
-            if (vote == 1) {
-                // failed to reach supermajority
-            } else {
-                // Otherwise, arbiters agree
-                ArtifactPot memory ap;
-                bool consensus = vote != 0;
-
-                for (j = 0; j < assertions.length; j++) {
-                    // If we haven't revealed or didn't assert on this artifact
-                    if (assertions[j].nonce == 0 || assertions[j].mask & (1 << i) != 0) {
-                        continue;
-                    }
-
-                    bool malicious = (assertions[j].verdicts & assertions[j].mask) & (1 << i) != 0;
-                    if (malicious == consensus) {
-                        ap.numWinners = ap.numWinners.add(1);
-                        ap.winnerPool = ap.winnerPool.add(assertions[j].bid);
-                    } else {
-                        ap.numLosers = ap.numLosers.add(1);
-                        ap.loserPool = ap.loserPool.add(assertions[j].bid);
+        } else {
+            for (i = 0; i < bounty.numArtifacts; i++) {
+                uint256 vote = 0;
+                for (j = 0; j < bounty.verdicts.length; j++) {
+                    if (bounty.verdicts[j] & (1 << i) != 0) {
+                        vote = vote.add(1);
                     }
                 }
+                // Three cases: 0: 0 <= T < 1/3, 1: 1/3 <= T < 2/3, 2: 2/3 <= T <= 1
+                vote = vote.mul(3).div(bounty.verdicts.length);
 
-                // If nobody asserted on this artifact, refund the ambassador
-                if (ap.numWinners == 0 && ap.numLosers == 0) {
-                    bountyRefund = bountyRefund.add(bounty.amount).add(BOUNTY_FEE);
+                if (vote == 1) {
+                    // failed to reach supermajority, refund expert bids and split
+                    // bounty
                     for (j = 0; j < assertions.length; j++) {
                         expertRewards[j] = expertRewards[j].add(assertions[j].bid);
+                        expertRewards[j] = expertRewards[j].add(bounty.amount.div(assertions.length));
                     }
                 } else {
-                    for (j = 0; j < assertions.length; j++) {
-                        expertRewards[j] = expertRewards[j].add(assertions[j].bid);
+                    // Otherwise, arbiters agree
+                    ArtifactPot memory ap;
+                    bool consensus = vote != 0;
 
+                    for (j = 0; j < assertions.length; j++) {
                         // If we haven't revealed or didn't assert on this artifact
-                        if (assertions[j].nonce == 0 || assertions[j].mask & (1 << i) != 0) {
+                        if (assertions[j].nonce == 0 || assertions[j].mask & (1 << i) == 0) {
                             continue;
                         }
 
-                        malicious = (assertions[j].verdicts & assertions[j].mask) & (1 << i) != 0;
+                        bool malicious = (assertions[j].verdicts & assertions[j].mask) & (1 << i) != 0;
                         if (malicious == consensus) {
-                            expertRewards[j] = expertRewards[j].add(assertions[j].bid.mul(ap.loserPool).div(ap.winnerPool));
-                            expertRewards[j] = expertRewards[j].add(bounty.amount.mul(ap.loserPool).div(ap.winnerPool));
+                            ap.numWinners = ap.numWinners.add(1);
+                            ap.winnerPool = ap.winnerPool.add(assertions[j].bid);
                         } else {
-                            expertRewards[j] = expertRewards[j].sub(assertions[j].bid);
+                            ap.numLosers = ap.numLosers.add(1);
+                            ap.loserPool = ap.loserPool.add(assertions[j].bid);
+                        }
+                    }
+
+                    // If nobody asserted on this artifact, refund the ambassador
+                    if (ap.numWinners == 0 && ap.numLosers == 0) {
+                        bountyRefund = bountyRefund.add(bounty.amount).add(BOUNTY_FEE);
+                        for (j = 0; j < assertions.length; j++) {
+                            expertRewards[j] = expertRewards[j].add(assertions[j].bid);
+                        }
+                    } else {
+                        for (j = 0; j < assertions.length; j++) {
+                            expertRewards[j] = expertRewards[j].add(assertions[j].bid);
+
+                            // If we haven't revealed or didn't assert on this artifact
+                            if (assertions[j].nonce == 0 || assertions[j].mask & (1 << i) == 0) {
+                                continue;
+                            }
+
+                            malicious = (assertions[j].verdicts & assertions[j].mask) & (1 << i) != 0;
+                            if (malicious == consensus) {
+                                expertRewards[j] = expertRewards[j].add(assertions[j].bid.mul(ap.loserPool).div(ap.winnerPool));
+                                expertRewards[j] = expertRewards[j].add(bounty.amount.mul(ap.loserPool).div(ap.winnerPool));
+                            } else {
+                                expertRewards[j] = expertRewards[j].sub(assertions[j].bid);
+                            }
                         }
                     }
                 }
