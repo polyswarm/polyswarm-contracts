@@ -168,6 +168,7 @@ contract BountyRegistry is Pausable {
         uint128 guid,
         uint256 amount,
         string artifactURI,
+        uint256 numArtifacts,
         uint256 durationBlocks,
         uint256[8] bloom
     )
@@ -191,7 +192,7 @@ contract BountyRegistry is Pausable {
         bountiesByGuid[guid].amount = amount;
         bountiesByGuid[guid].artifactURI = artifactURI;
         // FIXME
-        bountiesByGuid[guid].numArtifacts = 1;
+        bountiesByGuid[guid].numArtifacts = numArtifacts;
         bountiesByGuid[guid].expirationBlock = durationBlocks.add(block.number);
         bountiesByGuid[guid].bloom = bloom;
 

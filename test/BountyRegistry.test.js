@@ -28,7 +28,8 @@ function randomGuid() {
 async function postBounty(token, bountyregistry, from, amount, url, duration) {
   let guid = randomGuid();
   await token.approve(bountyregistry.address, amount.add(BountyFee), { from });
-  return await bountyregistry.postBounty(guid, amount, url, duration, [0, 0, 0, 0, 0, 0, 0, 0], { from });
+  // Set one artifact for testing purposes, change if we test multi-artifact
+  return await bountyregistry.postBounty(guid, amount, url, 1, duration, [0, 0, 0, 0, 0, 0, 0, 0], { from });
 }
 
 async function postAssertion(token, bountyregistry, from, bountyGuid, bid, mask, verdicts) {
