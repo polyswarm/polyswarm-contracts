@@ -16,7 +16,7 @@ contract BountyRegistry is Pausable {
         address author;
         uint256 amount;
         string artifactURI;
-        uint16 numArtifacts;
+        uint256 numArtifacts;
         uint256 expirationBlock;
         bool resolved;
         uint256[8] bloom;
@@ -181,6 +181,8 @@ contract BountyRegistry is Pausable {
         require(amount >= BOUNTY_AMOUNT_MINIMUM);
         // Check that our URI is non-empty
         require(bytes(artifactURI).length > 0);
+        // Check that our number of artifacts is valid
+        require(numArtifacts <= 256);
         // Check that our duration is non-zero
         require(durationBlocks > 0);
 
