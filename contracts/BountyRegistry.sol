@@ -18,7 +18,7 @@ contract BountyRegistry is Pausable {
         string artifactURI;
         uint256 numArtifacts;
         uint256 expirationBlock;
-        bool resolved;
+        address assignedArbiter;
         uint256[8] bloom;
         address[] voters;
         uint256[] verdicts;
@@ -97,6 +97,7 @@ contract BountyRegistry is Pausable {
     mapping (address => bool) public arbiters;
     mapping (uint256 => mapping (uint256 => uint256)) public verdictCountByGuid;
     mapping (uint256 => mapping (address => bool)) public arbiterVoteResgistryByGuid;
+    mapping (uint128 => mapping (address => bool)) public bountySettled;
 
     /**
      * Construct a new BountyRegistry
@@ -304,14 +305,14 @@ contract BountyRegistry is Pausable {
     }
 
     /**
-    * Function called by security experts to reveal an assertion after bounty
-    * expiration
-    *
-    * @param bountyGuid the guid of the bounty to assert on
-    * @param assertionId the id of the assertion to reveal
-    * @param nonce the nonce used to generate the commitment hash
-    * @param verdicts the verdicts making up this assertion
-    * @param metadata optional metadata to include in the assertion
+     * Function called by security experts to reveal an assertion after bounty
+     * expiration
+     *
+     * @param bountyGuid the guid of the bounty to assert on
+     * @param assertionId the id of the assertion to reveal
+     * @param nonce the nonce used to generate the commitment hash
+     * @param verdicts the verdicts making up this assertion
+     * @param metadata optional metadata to include in the assertion
      */
     function revealAssertion(
         uint128 bountyGuid,
@@ -367,39 +368,42 @@ contract BountyRegistry is Pausable {
         uint256 loserPool;
     }
 
+    struct BountyRewards {
+        uint256 bountyRefund;
+        uint256 arbiterReward;
+        uint256[] expertRewards;
+    }
+
     /**
-     * Function called after window has closed to add ground truth determination
+     * Function to calculate the reward disbursment of a bounty
      *
-     * This function will pay out rewards if the the bounty has a super majority
-     * @param bountyGuid the guid of the bounty to settle
+     * @param bountyGuid the guid of the bounty to calculate
+     * @return Rewards distributed by the bounty
      */
-    function settleBounty(uint128 bountyGuid) external whenNotPaused {
+    function calculateBountyRewards(bountyGuid) public view returns (BountyRewards) {
         Bounty memory bounty = bountiesByGuid[bountyGuid];
         Assertion[] memory assertions = assertionsByGuid[bountyGuid];
 
         // Check if this bountiesByGuid[bountyGuid] has been initialized
         require(bounty.author != address(0));
+        // Check if this bounty has been previously resolved for the sender
+        require(!bountySettled[bountyGuid][msg.sender]);
         // Check that the voting round has closed
         require(bounty.expirationBlock.add(ARBITER_VOTE_WINDOW).add(ASSERTION_REVEAL_WINDOW) <= block.number);
 
-        bountiesByGuid[bountyGuid].resolved = true;
+        BountyRewards ret = BountyRewards();
 
         uint256 i = 0;
         uint256 j = 0;
 
-        // These are scaled up by bounty.numArtifacts in the loop below, and are
-        // scaled back down before initiating token transfers
-        uint256[] memory expertRewards = new uint256[](assertions.length);
-        uint256 bountyRefund = 0;
-
         if (assertions.length == 0) {
             // Refund the bounty amount and fees to ambassador
-            bountyRefund = bounty.amount.add(BOUNTY_FEE).mul(bounty.numArtifacts);
+            ret.bountyRefund = bounty.amount.add(BOUNTY_FEE).mul(bounty.numArtifacts);
         } else if (bounty.verdicts.length == 0) {
             // Refund bids and distribute the bounty amount evenly to experts
             for (j = 0; j < assertions.length; j++) {
-                expertRewards[j] = expertRewards[j].add(assertions[j].bid);
-                expertRewards[j] = expertRewards[j].add(bounty.amount.div(assertions.length));
+                ret.expertRewards[j] = ret.expertRewards[j].add(assertions[j].bid);
+                ret.expertRewards[j] = ret.expertRewards[j].add(bounty.amount.div(assertions.length));
             }
         } else {
             for (i = 0; i < bounty.numArtifacts; i++) {
@@ -409,6 +413,7 @@ contract BountyRegistry is Pausable {
                         vote = vote.add(1);
                     }
                 }
+
                 // Three cases: 0: 0 <= T < 1/3, 1: 1/3 <= T < 2/3, 2: 2/3 <= T <= 1
                 vote = vote.mul(3).div(bounty.verdicts.length);
 
@@ -416,8 +421,8 @@ contract BountyRegistry is Pausable {
                     // failed to reach supermajority, refund expert bids and split
                     // bounty
                     for (j = 0; j < assertions.length; j++) {
-                        expertRewards[j] = expertRewards[j].add(assertions[j].bid);
-                        expertRewards[j] = expertRewards[j].add(bounty.amount.div(assertions.length));
+                        ret.expertRewards[j] = ret.expertRewards[j].add(assertions[j].bid);
+                        ret.expertRewards[j] = ret.expertRewards[j].add(bounty.amount.div(assertions.length));
                     }
                 } else {
                     // Otherwise, arbiters agree
@@ -442,13 +447,13 @@ contract BountyRegistry is Pausable {
 
                     // If nobody asserted on this artifact, refund the ambassador
                     if (ap.numWinners == 0 && ap.numLosers == 0) {
-                        bountyRefund = bountyRefund.add(bounty.amount).add(BOUNTY_FEE);
+                        ret.bountyRefund = ret.bountyRefund.add(bounty.amount).add(BOUNTY_FEE);
                         for (j = 0; j < assertions.length; j++) {
-                            expertRewards[j] = expertRewards[j].add(assertions[j].bid);
+                            ret.expertRewards[j] = ret.expertRewards[j].add(assertions[j].bid);
                         }
                     } else {
                         for (j = 0; j < assertions.length; j++) {
-                            expertRewards[j] = expertRewards[j].add(assertions[j].bid);
+                            ret.expertRewards[j] = ret.expertRewards[j].add(assertions[j].bid);
 
                             // If we haven't revealed or didn't assert on this artifact
                             if (assertions[j].nonce == 0 || assertions[j].mask & (1 << i) == 0) {
@@ -457,10 +462,10 @@ contract BountyRegistry is Pausable {
 
                             malicious = (assertions[j].verdicts & assertions[j].mask) & (1 << i) != 0;
                             if (malicious == consensus) {
-                                expertRewards[j] = expertRewards[j].add(assertions[j].bid.mul(ap.loserPool).div(ap.winnerPool));
-                                expertRewards[j] = expertRewards[j].add(bounty.amount.mul(ap.loserPool).div(ap.winnerPool));
+                                ret.expertRewards[j] = ret.expertRewards[j].add(assertions[j].bid.mul(ap.loserPool).div(ap.winnerPool));
+                                ret.expertRewards[j] = ret.expertRewards[j].add(bounty.amount.mul(ap.loserPool).div(ap.winnerPool));
                             } else {
-                                expertRewards[j] = expertRewards[j].sub(assertions[j].bid);
+                                ret.expertRewards[j] = ret.expertRewards[j].sub(assertions[j].bid);
                             }
                         }
                     }
@@ -468,35 +473,64 @@ contract BountyRegistry is Pausable {
             }
         }
 
-        // Disburse rewards
+        // Calculate rewards
         uint256 pot = bounty.amount.add(BOUNTY_FEE.add(ASSERTION_FEE.mul(assertions.length)));
         for (i = 0; i < assertions.length; i++) {
             pot = pot.add(assertions[i].bid);
         }
 
-        if (bountyRefund != 0) {
-            token.safeTransfer(bounty.author, bountyRefund.div(bounty.numArtifacts));
-            pot = pot.sub(bountyRefund.div(bounty.numArtifacts));
+        ret.bountyRefund = ret.bountyRefund.div(bounty.numArtifacts);
+        pot = pot.sub(ret.bountyRefund);
+
+        for (i = 0; i < assertions.length; i++) {
+            expertRewards[i] = expertRewards[i].div(bounty.numArtifacts);
+            pot = pot.sub(expertRewards[i]);
+        }
+
+        ret.arbiterReward = pot;
+
+        return ret;
+    }
+
+    /**
+     * Function called after window has closed to handle reward disbursal
+     *
+     * This function will pay out rewards if the the bounty has a super majority
+     * @param bountyGuid the guid of the bounty to settle
+     */
+    function settleBounty(uint128 bountyGuid) external whenNotPaused {
+        Bounty storage bounty = bountiesByGuid[bountyGuid];
+        Assertion[] storage assertions = assertionsByGuid[bountyGuid];
+
+        if (bounty.assignedArbiter == address(0)) {
+            bounty.assignedArbiter = getWeightedRandomArbiter(bountyGuid);
+        }
+
+        BountyRewards rewards = calculateBountyRewards(bountyGuid);
+        bountySettled[bountyGuid][address] = true;
+
+        // Disburse rewards
+        if (rewards.bountyRefund != 0 && bounty.author == msg.sender) {
+            token.safeTransfer(bounty.author, rewards.bountyRefund);
         }
 
         for (i = 0; i < assertions.length; i++) {
-            if (expertRewards[i] != 0) {
-                token.safeTransfer(assertions[i].author, expertRewards[i].div(bounty.numArtifacts));
-                pot = pot.sub(expertRewards[i].div(bounty.numArtifacts));
+            if (rewards.expertRewards[i] != 0 && assertions[i].author == msg.sender) {
+                token.safeTransfer(assertions[i].author, expertRewards[i]);
             }
         }
 
-        if (pot != 0) {
-            token.safeTransfer(getWeightedRandomArbiter(bountyGuid), pot);
+        if (rewards.arbiterRewards != 0 && bounty.assignedArbiter == msg.sender) {
+            token.safeTransfer(bounty.assignedArbiter, rewards.arbiterRewards);
         }
     }
 
     /**
-    *  Generates a random number from 0 to range based on the last block hash 
-    *
-        *  @param seed random number for reprocucing
-    *  @param range end range for random number
-        */
+     *  Generates a random number from 0 to range based on the last block hash 
+     *
+     *  @param seed random number for reprocucing
+     * @param range end range for random number
+     */
     function randomGen(uint seed, uint256 range) constant private returns (int256 randomNumber) {
         return int256(uint256(keccak256(abi.encodePacked(blockhash(block.number-1), seed))) % range);
     }
