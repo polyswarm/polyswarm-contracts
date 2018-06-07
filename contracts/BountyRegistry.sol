@@ -111,10 +111,10 @@ contract BountyRegistry is Pausable {
     }
 
     /**
-    * Function to check if an address is a valid arbiter
-    *
-    * @param addr The address to check
-    * @return true if addr is a valid arbiter else false
+     * Function to check if an address is a valid arbiter
+     *
+     * @param addr The address to check
+     * @return true if addr is a valid arbiter else false
      */
     function isArbiter(address addr) public view returns (bool) {
         return arbiters[addr] && staking.isEligible(addr);
@@ -127,13 +127,13 @@ contract BountyRegistry is Pausable {
     }
 
     /**
-    * Function called to add an arbiter, emits an evevnt with the added arbiter
-    * and block number used to calculate their arbiter status based on public
-    * arbiter selection algorithm.
-    *
-    * @param newArbiter the arbiter to add
-    * @param blockNumber the block number the determination to add was
-    *      calculated from
+     * Function called to add an arbiter, emits an evevnt with the added arbiter
+     * and block number used to calculate their arbiter status based on public
+     * arbiter selection algorithm.
+     *
+     * @param newArbiter the arbiter to add
+     * @param blockNumber the block number the determination to add was
+     *      calculated from
      */
     function addArbiter(address newArbiter, uint256 blockNumber) external whenNotPaused onlyOwner {
         require(newArbiter != address(0));
@@ -158,12 +158,12 @@ contract BountyRegistry is Pausable {
     }
 
     /**
-    * Function called by end users and ambassadors to post a bounty
-    *
-    * @param guid the guid of the bounty, must be unique
-    * @param amount the amount of NCT to post as a reward
-    * @param artifactURI uri of the artifacts comprising this bounty
-    * @param durationBlocks duration of this bounty in blocks
+     * Function called by end users and ambassadors to post a bounty
+     *
+     * @param guid the guid of the bounty, must be unique
+     * @param amount the amount of NCT to post as a reward
+     * @param artifactURI uri of the artifacts comprising this bounty
+     * @param durationBlocks duration of this bounty in blocks
      */
     function postBounty(
         uint128 guid,
@@ -225,8 +225,8 @@ contract BountyRegistry is Pausable {
         uint256 mask,
         uint256 commitment
     )
-    external
-    whenNotPaused
+        external
+        whenNotPaused
     {
         // Check if this bounty has been initialized
         require(bountiesByGuid[bountyGuid].author != address(0));
@@ -261,12 +261,12 @@ contract BountyRegistry is Pausable {
     }
 
     /**
-    * Function called by arbiter after bounty expiration to settle with their
-    * ground truth determination and pay out assertion rewards
-    *
-    * @param bountyGuid the guid of the bounty to settle
-    * @param verdicts bitset of verdicts representing ground truth for the
-    *      bounty's artifacts
+     * Function called by arbiter after bounty expiration to settle with their
+     * ground truth determination and pay out assertion rewards
+     *
+     * @param bountyGuid the guid of the bounty to settle
+     * @param verdicts bitset of verdicts representing ground truth for the
+     *      bounty's artifacts
      */
 
     function voteOnBounty(
@@ -274,9 +274,9 @@ contract BountyRegistry is Pausable {
         uint256 verdicts,
         bool validBloom
     )
-    external
-    onlyArbiter
-    whenNotPaused
+        external
+        onlyArbiter
+        whenNotPaused
     {
         Bounty storage bounty = bountiesByGuid[bountyGuid];
 
@@ -321,8 +321,8 @@ contract BountyRegistry is Pausable {
         uint256 verdicts,
         string metadata
     )
-    external
-    whenNotPaused
+        external
+        whenNotPaused
     {
         // Check if this bounty has been initialized
         require(bountiesByGuid[bountyGuid].author != address(0));
@@ -368,19 +368,19 @@ contract BountyRegistry is Pausable {
         uint256 loserPool;
     }
 
-    struct BountyRewards {
-        uint256 bountyRefund;
-        uint256 arbiterReward;
-        uint256[] expertRewards;
-    }
-
     /**
      * Function to calculate the reward disbursment of a bounty
      *
      * @param bountyGuid the guid of the bounty to calculate
      * @return Rewards distributed by the bounty
      */
-    function calculateBountyRewards(bountyGuid) public view returns (BountyRewards) {
+    function calculateBountyRewards(
+        uint128 bountyGuid
+    )
+        public
+        view
+        returns (uint256 bountyRefund, uint256 arbiterReward, uint256[] expertRewards)
+    {
         Bounty memory bounty = bountiesByGuid[bountyGuid];
         Assertion[] memory assertions = assertionsByGuid[bountyGuid];
 
@@ -391,19 +391,19 @@ contract BountyRegistry is Pausable {
         // Check that the voting round has closed
         require(bounty.expirationBlock.add(ARBITER_VOTE_WINDOW).add(ASSERTION_REVEAL_WINDOW) <= block.number);
 
-        BountyRewards ret = BountyRewards();
+        expertRewards = new uint256[](assertions.length);
 
         uint256 i = 0;
         uint256 j = 0;
 
         if (assertions.length == 0) {
             // Refund the bounty amount and fees to ambassador
-            ret.bountyRefund = bounty.amount.add(BOUNTY_FEE).mul(bounty.numArtifacts);
+            bountyRefund = bounty.amount.add(BOUNTY_FEE).mul(bounty.numArtifacts);
         } else if (bounty.verdicts.length == 0) {
             // Refund bids and distribute the bounty amount evenly to experts
             for (j = 0; j < assertions.length; j++) {
-                ret.expertRewards[j] = ret.expertRewards[j].add(assertions[j].bid);
-                ret.expertRewards[j] = ret.expertRewards[j].add(bounty.amount.div(assertions.length));
+                expertRewards[j] = expertRewards[j].add(assertions[j].bid);
+                expertRewards[j] = expertRewards[j].add(bounty.amount.div(assertions.length));
             }
         } else {
             for (i = 0; i < bounty.numArtifacts; i++) {
@@ -421,8 +421,8 @@ contract BountyRegistry is Pausable {
                     // failed to reach supermajority, refund expert bids and split
                     // bounty
                     for (j = 0; j < assertions.length; j++) {
-                        ret.expertRewards[j] = ret.expertRewards[j].add(assertions[j].bid);
-                        ret.expertRewards[j] = ret.expertRewards[j].add(bounty.amount.div(assertions.length));
+                        expertRewards[j] = expertRewards[j].add(assertions[j].bid);
+                        expertRewards[j] = expertRewards[j].add(bounty.amount.div(assertions.length));
                     }
                 } else {
                     // Otherwise, arbiters agree
@@ -447,13 +447,13 @@ contract BountyRegistry is Pausable {
 
                     // If nobody asserted on this artifact, refund the ambassador
                     if (ap.numWinners == 0 && ap.numLosers == 0) {
-                        ret.bountyRefund = ret.bountyRefund.add(bounty.amount).add(BOUNTY_FEE);
+                        bountyRefund = bountyRefund.add(bounty.amount).add(BOUNTY_FEE);
                         for (j = 0; j < assertions.length; j++) {
-                            ret.expertRewards[j] = ret.expertRewards[j].add(assertions[j].bid);
+                            expertRewards[j] = expertRewards[j].add(assertions[j].bid);
                         }
                     } else {
                         for (j = 0; j < assertions.length; j++) {
-                            ret.expertRewards[j] = ret.expertRewards[j].add(assertions[j].bid);
+                            expertRewards[j] = expertRewards[j].add(assertions[j].bid);
 
                             // If we haven't revealed or didn't assert on this artifact
                             if (assertions[j].nonce == 0 || assertions[j].mask & (1 << i) == 0) {
@@ -462,10 +462,10 @@ contract BountyRegistry is Pausable {
 
                             malicious = (assertions[j].verdicts & assertions[j].mask) & (1 << i) != 0;
                             if (malicious == consensus) {
-                                ret.expertRewards[j] = ret.expertRewards[j].add(assertions[j].bid.mul(ap.loserPool).div(ap.winnerPool));
-                                ret.expertRewards[j] = ret.expertRewards[j].add(bounty.amount.mul(ap.loserPool).div(ap.winnerPool));
+                                expertRewards[j] = expertRewards[j].add(assertions[j].bid.mul(ap.loserPool).div(ap.winnerPool));
+                                expertRewards[j] = expertRewards[j].add(bounty.amount.mul(ap.loserPool).div(ap.winnerPool));
                             } else {
-                                ret.expertRewards[j] = ret.expertRewards[j].sub(assertions[j].bid);
+                                expertRewards[j] = expertRewards[j].sub(assertions[j].bid);
                             }
                         }
                     }
@@ -479,17 +479,15 @@ contract BountyRegistry is Pausable {
             pot = pot.add(assertions[i].bid);
         }
 
-        ret.bountyRefund = ret.bountyRefund.div(bounty.numArtifacts);
-        pot = pot.sub(ret.bountyRefund);
+        bountyRefund = bountyRefund.div(bounty.numArtifacts);
+        pot = pot.sub(bountyRefund);
 
         for (i = 0; i < assertions.length; i++) {
             expertRewards[i] = expertRewards[i].div(bounty.numArtifacts);
             pot = pot.sub(expertRewards[i]);
         }
 
-        ret.arbiterReward = pot;
-
-        return ret;
+        arbiterReward = pot;
     }
 
     /**
@@ -502,26 +500,37 @@ contract BountyRegistry is Pausable {
         Bounty storage bounty = bountiesByGuid[bountyGuid];
         Assertion[] storage assertions = assertionsByGuid[bountyGuid];
 
+        // Check if this bountiesByGuid[bountyGuid] has been initialized
+        require(bounty.author != address(0));
+        // Check if this bounty has been previously resolved for the sender
+        require(!bountySettled[bountyGuid][msg.sender]);
+        // Check that the voting round has closed
+        require(bounty.expirationBlock.add(ARBITER_VOTE_WINDOW).add(ASSERTION_REVEAL_WINDOW) <= block.number);
+
         if (bounty.assignedArbiter == address(0)) {
             bounty.assignedArbiter = getWeightedRandomArbiter(bountyGuid);
         }
 
-        BountyRewards rewards = calculateBountyRewards(bountyGuid);
-        bountySettled[bountyGuid][address] = true;
+        uint256 bountyRefund;
+        uint256 arbiterReward;
+        uint256[] memory expertRewards;
+        (bountyRefund, arbiterReward, expertRewards) = calculateBountyRewards(bountyGuid);
+
+        bountySettled[bountyGuid][msg.sender] = true;
 
         // Disburse rewards
-        if (rewards.bountyRefund != 0 && bounty.author == msg.sender) {
-            token.safeTransfer(bounty.author, rewards.bountyRefund);
+        if (bountyRefund != 0 && bounty.author == msg.sender) {
+            token.safeTransfer(bounty.author, bountyRefund);
         }
 
-        for (i = 0; i < assertions.length; i++) {
-            if (rewards.expertRewards[i] != 0 && assertions[i].author == msg.sender) {
+        for (uint256 i = 0; i < assertions.length; i++) {
+            if (expertRewards[i] != 0 && assertions[i].author == msg.sender) {
                 token.safeTransfer(assertions[i].author, expertRewards[i]);
             }
         }
 
-        if (rewards.arbiterRewards != 0 && bounty.assignedArbiter == msg.sender) {
-            token.safeTransfer(bounty.assignedArbiter, rewards.arbiterRewards);
+        if (arbiterReward != 0 && bounty.assignedArbiter == msg.sender) {
+            token.safeTransfer(bounty.assignedArbiter, arbiterReward);
         }
     }
 
@@ -536,11 +545,10 @@ contract BountyRegistry is Pausable {
     }
 
     /**
-    * Gets a random Arbiter weighted by the amount of Nectar they have
-    *
-        * @param bountyGuid the guid of the bounty
-    */
-
+     * Gets a random Arbiter weighted by the amount of Nectar they have
+     *
+     * @param bountyGuid the guid of the bounty
+     */
     function getWeightedRandomArbiter(uint128 bountyGuid) public view returns (address voter) {
         require(bountiesByGuid[bountyGuid].author != address(0));
 
@@ -567,19 +575,19 @@ contract BountyRegistry is Pausable {
     }
 
     /**
-    * Get the total number of bounties tracked by the contract
-    * @return total number of bounties
-    */
+     * Get the total number of bounties tracked by the contract
+     * @return total number of bounties
+     */
     function getNumberOfBounties() external view returns (uint) {
         return bountyGuids.length;
     }
 
     /**
-    * Gets the number of assertions for a bounty
-    *
-        * @param bountyGuid the guid of the bounty
-        * @return number of assertions for the given bounty
-            */
+     * Gets the number of assertions for a bounty
+     *
+     * @param bountyGuid the guid of the bounty
+     * @return number of assertions for the given bounty
+     */
     function getNumberOfAssertions(uint128 bountyGuid) external view returns (uint) {
         // Check if this bounty has been initialized
         require(bountiesByGuid[bountyGuid].author != address(0));
@@ -588,11 +596,10 @@ contract BountyRegistry is Pausable {
     }
 
     /**
-    * Gets the vote count for a specific bounty
-    *
-        * @param bountyGuid the guid of the bounty
-        */
-
+     * Gets the vote count for a specific bounty
+     *
+     * @param bountyGuid the guid of the bounty
+     */
     function getVerdictCount(uint128 bountyGuid) external view returns (uint) {
         require(bountiesByGuid[bountyGuid].author != address(0));
 
@@ -600,11 +607,10 @@ contract BountyRegistry is Pausable {
     }
 
     /**
-    * Gets all the voters for a specific bounty
-    *
-        * @param bountyGuid the guid of the bounty
-        */
-
+     * Gets all the voters for a specific bounty
+     *
+     * @param bountyGuid the guid of the bounty
+     */
     function getVoters(uint128 bountyGuid) external view returns (address[]) {
         require(bountiesByGuid[bountyGuid].author != address(0));
 
@@ -626,11 +632,11 @@ contract BountyRegistry is Pausable {
     }
 
     /**
-    * View function displays most active bounty posters over past
-    * ARBITER_LOOKBACK_RANGE bounties to select future arbiters
-    *
-        * @return sorted array of most active bounty posters
-    */
+     * View function displays most active bounty posters over past
+     * ARBITER_LOOKBACK_RANGE bounties to select future arbiters
+     *
+     * @return sorted array of most active bounty posters
+     */
     function getArbiterCandidates() external view returns (address[]) {
         require(bountyGuids.length > 0);
 
