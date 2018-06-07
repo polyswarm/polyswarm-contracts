@@ -31,7 +31,7 @@ module.exports = function(deployer, network, accounts) {
         config.push(`BOUNTY_REGISTRY_ADDRESS="${BOUNTY_REGISTRY_ADDRESS}"`);
         config.push(`OFFER_REGISTRY_ADDRESS="${OFFER_REGISTRY_ADDRESS}"`);
 
-        writeFile(`${__dirname}/../build/polysrawm.contracts.cfg`, config.join('\n'), function(err) {
+        writeFile(`${__dirname}/../build/polyswarm.contracts.cfg`, config.join('\n'), function(err) {
           if (err) console.log(err);
           console.log('new config created!')
         });
