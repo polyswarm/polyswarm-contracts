@@ -12,6 +12,7 @@ services:
             - "31337:31337"
         volumes:
             - "./build:/build"
+        command: ["./migrate_and_test.sh"]
     geth:
         image: "trufflesuite/ganache-cli"
         ports:
