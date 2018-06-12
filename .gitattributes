@@ -1,2 +1,2 @@
 *.sol linguist-language=Solidity
-*.sol gitlab-language=JavaScript
+*.sol gitlab-language=javascript
