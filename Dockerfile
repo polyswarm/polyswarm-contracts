@@ -17,4 +17,4 @@ RUN npm install
 
 COPY . .
 
-CMD ["./wait_and_run.sh"]
+CMD ["./migrate_and_test.sh"]
